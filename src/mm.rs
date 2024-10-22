@@ -19,7 +19,10 @@ use crate::{config, loader};
 /// - The second return value is the top of the user stack.
 /// - The third return value is the address space of the user app.
 pub fn load_user_app(app_name: &str) -> AxResult<(VirtAddr, VirtAddr, AddrSpace)> {
-    let mut uspace = axmm::new_user_aspace()?;
+    let mut uspace = axmm::new_user_aspace(
+        VirtAddr::from_usize(config::USER_SPACE_BASE),
+        config::USER_SPACE_SIZE,
+    )?;
     let elf_info = loader::load_elf(app_name, uspace.base());
     for segement in elf_info.segments {
         debug!(
