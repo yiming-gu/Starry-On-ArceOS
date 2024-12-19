@@ -8,62 +8,63 @@ use core::arch::global_asm;
 
 use axhal::paging::MappingFlags;
 use memory_addr::{MemoryAddr, VirtAddr};
+use alloc::boxed::Box;
 
 global_asm!(include_str!(concat!(env!("OUT_DIR"), "/link_app.S")));
 
-extern "C" {
-    fn _app_count();
-}
+// extern "C" {
+//     fn _app_count();
+// }
 
-/// Get the number of apps.
-pub(crate) fn get_app_count() -> usize {
-    unsafe { (_app_count as *const u64).read() as usize }
-}
+// /// Get the number of apps.
+// pub(crate) fn get_app_count() -> usize {
+//     unsafe { (_app_count as *const u64).read() as usize }
+// }
 
-/// Get the name of an app by a given app ID.
-pub(crate) fn get_app_name(app_id: usize) -> &'static str {
-    unsafe {
-        let app_0_start_ptr = (_app_count as *const u64).add(1);
-        assert!(app_id < get_app_count());
-        let app_name = app_0_start_ptr.add(app_id * 2).read() as *const u8;
-        let mut len = 0;
-        while app_name.add(len).read() != b'\0' {
-            len += 1;
-        }
-        let slice = core::slice::from_raw_parts(app_name, len);
-        core::str::from_utf8(slice).unwrap()
-    }
-}
+// /// Get the name of an app by a given app ID.
+// pub(crate) fn get_app_name(app_id: usize) -> &'static str {
+//     unsafe {
+//         let app_0_start_ptr = (_app_count as *const u64).add(1);
+//         assert!(app_id < get_app_count());
+//         let app_name = app_0_start_ptr.add(app_id * 2).read() as *const u8;
+//         let mut len = 0;
+//         while app_name.add(len).read() != b'\0' {
+//             len += 1;
+//         }
+//         let slice = core::slice::from_raw_parts(app_name, len);
+//         core::str::from_utf8(slice).unwrap()
+//     }
+// }
 
-/// Get the data of an app by a given app ID.
-pub(crate) fn get_app_data(app_id: usize) -> &'static [u8] {
-    unsafe {
-        let app_0_start_ptr = (_app_count as *const u64).add(1);
-        assert!(app_id < get_app_count());
-        let app_start = app_0_start_ptr.add(app_id * 2 + 1).read() as usize;
-        let app_end = app_0_start_ptr.add(app_id * 2 + 2).read() as usize;
-        let app_size = app_end - app_start;
-        core::slice::from_raw_parts(app_start as *const u8, app_size)
-    }
-}
+// /// Get the data of an app by a given app ID.
+// pub(crate) fn get_app_data(app_id: usize) -> &'static [u8] {
+//     unsafe {
+//         let app_0_start_ptr = (_app_count as *const u64).add(1);
+//         assert!(app_id < get_app_count());
+//         let app_start = app_0_start_ptr.add(app_id * 2 + 1).read() as usize;
+//         let app_end = app_0_start_ptr.add(app_id * 2 + 2).read() as usize;
+//         let app_size = app_end - app_start;
+//         core::slice::from_raw_parts(app_start as *const u8, app_size)
+//     }
+// }
 
-/// Get the data of an app by the given app name.
-pub(crate) fn get_app_data_by_name(name: &str) -> Option<&'static [u8]> {
-    let app_count = get_app_count();
-    (0..app_count)
-        .find(|&i| get_app_name(i) == name)
-        .map(get_app_data)
-}
+// /// Get the data of an app by the given app name.
+// pub(crate) fn get_app_data_by_name(name: &str) -> Option<&'static [u8]> {
+//     let app_count = get_app_count();
+//     (0..app_count)
+//         .find(|&i| get_app_name(i) == name)
+//         .map(get_app_data)
+// }
 
-/// List all apps.
-pub(crate) fn list_apps() {
-    info!("/**** APPS ****");
-    let app_count = get_app_count();
-    for i in 0..app_count {
-        info!("{}", get_app_name(i));
-    }
-    info!("**************/");
-}
+// /// List all apps.
+// pub(crate) fn list_apps() {
+//     info!("/**** APPS ****");
+//     let app_count = get_app_count();
+//     for i in 0..app_count {
+//         info!("{}", get_app_name(i));
+//     }
+//     info!("**************/");
+// }
 
 /// The segment of the elf file, which is used to map the elf file to the memory space
 pub struct ELFSegment {
@@ -102,10 +103,12 @@ pub(crate) fn load_elf(name: &str, base_addr: VirtAddr) -> ELFInfo {
     use xmas_elf::program::{Flags, SegmentData};
     use xmas_elf::{header, ElfFile};
 
-    let elf = ElfFile::new(
-        get_app_data_by_name(name).unwrap_or_else(|| panic!("failed to get app: {}", name)),
-    )
-    .expect("invalid ELF file");
+    // let elf = ElfFile::new(
+    //     get_app_data_by_name(name).unwrap_or_else(|| panic!("failed to get app: {}", name)),
+    // )
+    // .expect("invalid ELF file");
+    let elf_data: &'static [u8] = Box::leak(axfs::api::read(name).expect("failed to read").into_boxed_slice());
+    let elf = ElfFile::new(&elf_data).expect("Error parsing app ELF file.");
     let elf_header = elf.header;
 
     assert_eq!(elf_header.pt1.magic, *b"\x7fELF", "invalid elf!");
@@ -174,3 +177,61 @@ pub(crate) fn load_elf(name: &str, base_addr: VirtAddr) -> ELFInfo {
         auxv: kernel_elf_parser::get_auxv_vector(&elf, elf_offset),
     }
 }
+
+// pub(crate) fn load_user_app(fname: &str, uspace: &mut AddrSpace) -> io::Result<usize> {
+//     let mut file = File::open(fname)?;
+//     let (phdrs, entry, _, _) = load_elf_phdrs(&mut file)?;
+
+//     for phdr in &phdrs {
+//         info!(
+//             "phdr: offset: {:#X}=>{:#X} size: {:#X}=>{:#X}",
+//             phdr.p_offset, phdr.p_vaddr, phdr.p_filesz, phdr.p_memsz
+//         );
+
+//         let vaddr = VirtAddr::from(phdr.p_vaddr as usize).align_down_4k();
+//         let vaddr_end = VirtAddr::from((phdr.p_vaddr+phdr.p_memsz) as usize)
+//             .align_up_4k();
+
+//         info!("{:#x} - {:#x}", vaddr, vaddr_end);
+//         uspace.map_alloc(vaddr, vaddr_end-vaddr, MappingFlags::READ|MappingFlags::WRITE|MappingFlags::EXECUTE|MappingFlags::USER, true)?;
+
+//         let mut data = vec![0u8; phdr.p_memsz as usize];
+//         file.seek(SeekFrom::Start(phdr.p_offset))?;
+
+//         let filesz = phdr.p_filesz as usize;
+//         let mut index = 0;
+//         while index < filesz {
+//             let n = file.read(&mut data[index..filesz])?;
+//             index += n;
+//         }
+//         assert_eq!(index, filesz);
+//         uspace.write(VirtAddr::from(phdr.p_vaddr as usize), &data)?;
+//     }
+
+//     Ok(entry)
+// }
+
+// fn load_elf_phdrs(file: &mut File) -> io::Result<(Vec<ProgramHeader>, usize, usize, usize)> {
+//     let mut buf: [u8; ELF_HEAD_BUF_SIZE] = [0; ELF_HEAD_BUF_SIZE];
+//     file.read(&mut buf)?;
+
+//     let ehdr = ElfBytes::<AnyEndian>::parse_elf_header(&buf[..]).unwrap();
+//     info!("e_entry: {:#X}", ehdr.e_entry);
+
+//     let phnum = ehdr.e_phnum as usize;
+//     // Validate phentsize before trying to read the table so that we can error early for corrupted files
+//     let entsize = ProgramHeader::validate_entsize(ehdr.class, ehdr.e_phentsize as usize).unwrap();
+//     let size = entsize.checked_mul(phnum).unwrap();
+//     assert!(size > 0 && size <= PAGE_SIZE_4K);
+//     let phoff = ehdr.e_phoff;
+//     let mut buf = alloc::vec![0u8; size];
+//     let _ = file.seek(SeekFrom::Start(phoff));
+//     file.read(&mut buf)?;
+//     let phdrs = SegmentTable::new(ehdr.endianness, ehdr.class, &buf[..]);
+
+//     let phdrs: Vec<ProgramHeader> = phdrs
+//         .iter()
+//         .filter(|phdr| phdr.p_type == PT_LOAD || phdr.p_type == PT_INTERP)
+//         .collect();
+//     Ok((phdrs, ehdr.e_entry as usize, ehdr.e_phoff as usize, ehdr.e_phnum as usize))
+// }

@@ -3,8 +3,10 @@ use core::sync::atomic::AtomicU64;
 
 use axhal::arch::UspaceContext;
 use axmm::AddrSpace;
+use axns::{AxNamespace, AxNamespaceIf};
 use axsync::Mutex;
 use axtask::{AxTaskRef, TaskExtRef, TaskInner};
+use alloc::vec::Vec;
 
 /// Task extended data for the monolithic kernel.
 pub struct TaskExt {
@@ -20,15 +22,24 @@ pub struct TaskExt {
     pub uctx: UspaceContext,
     /// The virtual memory address space.
     pub aspace: Arc<Mutex<AddrSpace>>,
+    /// The resource namespace
+    pub ns: AxNamespace,
+    /// The parent task id
+    pub parent: Option<AtomicU64>,
+    /// The child task list
+    pub children: Mutex<Vec<AxTaskRef>>,
 }
 
 impl TaskExt {
-    pub const fn new(uctx: UspaceContext, aspace: Arc<Mutex<AddrSpace>>) -> Self {
+    pub fn new(uctx: UspaceContext, aspace: Arc<Mutex<AddrSpace>>, parent: Option<AtomicU64>) -> Self {
         Self {
             proc_id: 233,
             uctx,
             clear_child_tid: AtomicU64::new(0),
             aspace,
+            ns: AxNamespace::new_thread_local(),
+            parent,
+            children: Mutex::new(Vec::new()),
         }
     }
 
@@ -43,9 +54,24 @@ impl TaskExt {
     }
 }
 
+struct AxNamespaceImpl;
+
+#[crate_interface::impl_interface]
+impl AxNamespaceIf for AxNamespaceImpl {
+    #[inline(never)]
+    fn current_namespace_base() -> *mut u8 {
+        let current = axtask::current();
+        // Safety: We only check whether the task extended data is null and do not access it.
+        if unsafe { current.task_ext_ptr() }.is_null() {
+            return axns::AxNamespace::global().base();
+        }
+        current.task_ext().ns.base()
+    }
+}
+
 axtask::def_task_ext!(TaskExt);
 
-pub fn spawn_user_task(aspace: Arc<Mutex<AddrSpace>>, uctx: UspaceContext) -> AxTaskRef {
+pub fn spawn_user_task(aspace: Arc<Mutex<AddrSpace>>, uctx: UspaceContext, parent: Option<u64>) -> AxTaskRef {
     let mut task = TaskInner::new(
         || {
             let curr = axtask::current();
@@ -63,6 +89,10 @@ pub fn spawn_user_task(aspace: Arc<Mutex<AddrSpace>>, uctx: UspaceContext) -> Ax
     );
     task.ctx_mut()
         .set_page_table_root(aspace.lock().page_table_root());
-    task.init_task_ext(TaskExt::new(uctx, aspace));
+    if let Some(parent_id) = parent {
+        task.init_task_ext(TaskExt::new(uctx, aspace, Some(AtomicU64::new(parent_id))));
+    } else {
+        task.init_task_ext(TaskExt::new(uctx, aspace, None));
+    }
     axtask::spawn_task(task)
 }

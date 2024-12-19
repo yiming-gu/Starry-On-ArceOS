@@ -23,7 +23,7 @@ use axsync::Mutex;
 
 #[no_mangle]
 fn main() {
-    loader::list_apps();
+    // loader::list_apps();
     let testcases = option_env!("AX_TESTCASES_LIST")
         .unwrap_or_else(|| "Please specify the testcases list by making user_apps")
         .split(',')
@@ -34,6 +34,7 @@ fn main() {
         let user_task = task::spawn_user_task(
             Arc::new(Mutex::new(uspace)),
             UspaceContext::new(entry_vaddr.into(), ustack_top, 2333),
+            None,
         );
         let exit_code = user_task.join();
         info!("User task {} exited with code: {:?}", testcase, exit_code);

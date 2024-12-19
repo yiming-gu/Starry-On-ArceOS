@@ -1,6 +1,6 @@
 AX_ROOT ?= $(PWD)/.arceos
-AX_TESTCASE ?= nimbos
-ARCH ?= x86_64
+AX_TESTCASE ?= riscv-syscall-testcases/riscv64
+ARCH ?= riscv64
 AX_TESTCASES_LIST=$(shell cat ./apps/$(AX_TESTCASE)/testcase_list | tr '\n' ',')
 
 RUSTDOCFLAGS := -Z unstable-options --enable-index-page -D rustdoc::broken_intra_doc_links -D missing-docs
@@ -23,7 +23,7 @@ test:
 	@./scripts/app_test.sh
 
 build run justrun debug disasm: ax_root
-	@make -C $(AX_ROOT) A=$(PWD) $@
+	make -C $(AX_ROOT) A=$(PWD) BLK=y DISK_IMG=$(PWD)/disk.img $@
 
 clean: ax_root
 	@make -C $(AX_ROOT) A=$(PWD) clean

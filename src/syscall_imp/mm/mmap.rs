@@ -57,6 +57,12 @@ bitflags::bitflags! {
     }
 }
 
+pub(crate) fn sys_brk(brk: usize) -> isize {
+    syscall_body!(sys_brk, {
+        Ok(brk as isize)
+    })
+}
+
 pub(crate) fn sys_mmap(
     addr: *mut usize,
     length: usize,
