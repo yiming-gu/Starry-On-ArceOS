@@ -42,6 +42,19 @@ pub(crate) fn sys_getcwd(buf: *mut c_char, size: usize) -> isize {
     api::sys_getcwd(buf, size) as isize
 }
 
-// pub(crate) fn sys_chdir(path: *const c_char) -> isize {
+pub(crate) fn sys_chdir(path: *const c_char) -> isize {
+    let path = api::utils::char_ptr_to_str(path);
+    syscall_body!(sys_chdir, {
+        axfs::api::set_current_dir(path?);
+        Ok(0)
+    })
+}
 
-// }
+pub (crate) fn sys_mkdirat(dfd: c_int, path: *const c_char, mode: api::ctypes::mode_t) -> isize {
+    assert_eq!(dfd, AT_FDCWD);
+    let path = api::utils::char_ptr_to_str(path);
+    syscall_body!(sys_mkdirat, {
+        axfs::api::create_dir(path?);
+        Ok(0)
+    })
+}

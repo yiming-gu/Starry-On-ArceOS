@@ -324,3 +324,16 @@ pub(crate) fn sys_wait4(pid: i32, exit_code_ptr: *mut i32, option: u32) -> isize
         Ok(child_id)
     })
 }
+
+// pub(crate) fn sys_execve(
+//     path: *const u8,
+//     argv: *const usize,
+//     envp: *const usize,
+// ) -> isize {
+//     syscall_body!(sys_execve, {
+//         let filename = api::utils::char_ptr_to_str(filename);
+//         let argv = api::utils::char_ptr_to_str_array(argv);
+//         let envp = api::utils::char_ptr_to_str_array(envp);
+//         let curr_task = current();
+//     })
+// }

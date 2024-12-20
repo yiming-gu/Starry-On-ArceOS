@@ -7,6 +7,8 @@ use axns::{AxNamespace, AxNamespaceIf};
 use axsync::Mutex;
 use axtask::{AxTaskRef, TaskExtRef, TaskInner};
 use alloc::vec::Vec;
+use arceos_posix_api::imp::fd_ops::FD_TABLE;
+use axfs::root::{CURRENT_DIR, CURRENT_DIR_PATH};
 
 /// Task extended data for the monolithic kernel.
 pub struct TaskExt {
@@ -52,6 +54,12 @@ impl TaskExt {
         self.clear_child_tid
             .store(clear_child_tid, core::sync::atomic::Ordering::Relaxed);
     }
+
+    pub(crate) fn ns_init_new(&self) {
+        FD_TABLE.deref_from(&self.ns).init_new(FD_TABLE.copy_inner());
+        CURRENT_DIR.deref_from(&self.ns).init_new(CURRENT_DIR.copy_inner());
+        CURRENT_DIR_PATH.deref_from(&self.ns).init_new(CURRENT_DIR_PATH.copy_inner());
+    }
 }
 
 struct AxNamespaceImpl;
@@ -94,5 +102,6 @@ pub fn spawn_user_task(aspace: Arc<Mutex<AddrSpace>>, uctx: UspaceContext, paren
     } else {
         task.init_task_ext(TaskExt::new(uctx, aspace, None));
     }
+    task.task_ext().ns_init_new();
     axtask::spawn_task(task)
 }
