@@ -23,7 +23,7 @@ test:
 	@./scripts/app_test.sh
 
 build run justrun debug disasm: ax_root
-	make -C $(AX_ROOT) A=$(PWD) BLK=y DISK_IMG=$(PWD)/disk.img $@
+	make -C $(AX_ROOT) A=$(PWD) BLK=y DISK_IMG=$(PWD)/disk.img LOG=info $@
 
 clean: ax_root
 	@make -C $(AX_ROOT) A=$(PWD) clean

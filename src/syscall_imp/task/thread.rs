@@ -1,17 +1,14 @@
 use arceos_posix_api::{self as api};
 use axerrno::LinuxError;
-use axtask::{current, TaskExtMut, TaskExtRef};
+use axtask::{current, TaskExtRef};
 use num_enum::TryFromPrimitive;
 use axmm::AddrSpace;
-use axhal::mem::VirtAddr;
 use alloc::sync::Arc;
 use axsync::Mutex;
-use crate::{config, task};
+use crate::task;
 use axhal::arch::UspaceContext;
-use axtask::TaskInner;
-use crate::task::TaskExt;
 use axhal::arch::TrapFrame;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::Ordering;
 
 use crate::syscall_body;
 use bitflags::*;
@@ -168,7 +165,7 @@ pub(crate) fn sys_getpid() -> i32 {
     api::sys_getpid()
 }
 
-pub(crate) fn sys_getppid() -> i32 {
+pub(crate) fn sys_getppid() -> isize {
     syscall_body!(sys_getppid, {
         let curr = current();
         if let Some(parent) = &curr.task_ext().parent {
@@ -272,7 +269,7 @@ pub(crate) fn sys_clone(
         let kstack_top: usize = curr_task.kernel_stack_top().unwrap().into();
         let trap_frame_size = core::mem::size_of::<TrapFrame>();
         let trap_frame_ptr = (kstack_top - trap_frame_size) as *mut TrapFrame;
-        let mut tf = &mut unsafe { *trap_frame_ptr };
+        let tf = &mut unsafe { *trap_frame_ptr };
         if let Some(stack) = stack {
             tf.regs.sp = stack;
             tf.sepc = unsafe {*(user_stack as *mut usize)};
@@ -281,7 +278,7 @@ pub(crate) fn sys_clone(
         let mut uctx = UspaceContext::from(tf);
         uctx.set_retval(0);
 
-        let mut child_task = task::spawn_user_task(
+        let child_task = task::spawn_user_task(
             Arc::new(Mutex::new(uspace)),
             uctx,
             Some(curr_task.id().as_u64()),
@@ -291,37 +288,115 @@ pub(crate) fn sys_clone(
 
         Ok(child_task.id().as_u64() as isize)
     })
+}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WaitStatus {
+    /// 子任务正常退出
+    Exited,
+    /// 子任务正在运行
+    Running,
+    /// 找不到对应的子任务
+    NotExist,
+}
+
+pub unsafe fn wait_pid(pid: i32, exit_code_ptr: *mut i32) -> Result<u64, WaitStatus> {
+    let curr_process = current();
+    let mut exit_task_id: usize = 0;
+    let mut answer_id: u64 = 0;
+    let mut answer_status = WaitStatus::NotExist;
+    for (index, child) in curr_process.task_ext().children.lock().iter().enumerate() {
+        if pid <= 0 {
+            if pid == 0 {
+                warn!("Don't support for process group.");
+            }
+            answer_status = WaitStatus::Running;
+            if let Some(exit_code) = child.get_code_if_exit() {
+                answer_status = WaitStatus::Exited;
+                info!("wait pid _{}_ with code _{}_", child.id().as_u64(), exit_code);
+                exit_task_id = index;
+                if !exit_code_ptr.is_null() {
+                    unsafe {
+                        *exit_code_ptr = exit_code << 8;
+                    }
+                }
+                answer_id = child.id().as_u64();
+                break;
+            }
+        } else if child.id().as_u64() == pid as u64 {
+            if let Some(exit_code) = child.get_code_if_exit() {
+                answer_status = WaitStatus::Exited;
+                info!("wait pid _{}_ with code _{:?}_", child.id().as_u64(), exit_code);
+                exit_task_id = index;
+                if !exit_code_ptr.is_null() {
+                    unsafe {
+                        *exit_code_ptr = exit_code << 8;
+                    }
+                }
+                answer_id = child.id().as_u64();
+            } else {
+                answer_status = WaitStatus::Running;
+            }
+            break;
+        }
+    }
+    // 若进程成功结束，需要将其从父进程的children中删除
+    if answer_status == WaitStatus::Exited {
+        curr_process.task_ext().children.lock().remove(exit_task_id);
+        return Ok(answer_id);
+    }
+    Err(answer_status)
 }
 
 pub(crate) fn sys_wait4(pid: i32, exit_code_ptr: *mut i32, option: u32) -> isize {
     syscall_body!(sys_wait4, {
-        let curr_task = current();
-        let children = curr_task.task_ext().children.lock();
-        let mut child_id = 0;
-        for (index, child) in children.iter().enumerate() {
-            if pid <= 0 {
-                if pid == 0 {
-                    warn!("Don't support for process group.");
+        loop {
+            let answer = unsafe { wait_pid(pid, exit_code_ptr) };
+            match answer {
+                Ok(pid) => {
+                    return Ok(pid as isize);
                 }
-                if let Some(ret) = child.join() {
-                    if !exit_code_ptr.is_null() {
-                        unsafe { *exit_code_ptr = ret << 8; }
+                Err(status) => {
+                    match status {
+                        WaitStatus::NotExist => {
+                            return Err(LinuxError::ECHILD);
+                        }
+                        WaitStatus::Running => {
+                            axtask::yield_now();
+                        }
+                        _ => {
+                            panic!("Shouldn't reach here!");
+                        }
                     }
-                    child_id = child.id().as_u64();
-                    break;
                 }
-            } else if child.id().as_u64() == pid as u64 {
-                if let Some(ret) = child.join() {
-                    if !exit_code_ptr.is_null() {
-                        unsafe { *exit_code_ptr = ret << 8; }
-                    }
-                    child_id = child.id().as_u64();
-                    break;
-                }
-            }
+            };
         }
-        Ok(child_id)
+        // for (index, child) in children.iter().enumerate() {
+        //     if pid <= 0 {
+        //         info!("Don't support for process group.");
+        //         if pid == 0 {
+        //             warn!("Don't support for process group.");
+        //         }
+        //         if let Some(ret) = child.join() {
+        //             if !exit_code_ptr.is_null() {
+        //                 unsafe { *exit_code_ptr = ret << 8; }
+        //             }
+        //             child_id = child.id().as_u64();
+        //             children.remove(index);
+        //             break;
+        //         }
+        //     } else if child.id().as_u64() == pid as u64 {
+        //         if let Some(ret) = child.join() {
+        //             if !exit_code_ptr.is_null() {
+        //                 unsafe { *exit_code_ptr = ret << 8; }
+        //             }
+        //             child_id = child.id().as_u64();
+        //             children.remove(index);
+        //             break;
+        //         }
+        //     }
+        // }
+        // Ok(child_id)
     })
 }
 

@@ -25,7 +25,7 @@ axtask = { path = ".arceos/modules/axtask" }
 axsync = { path = ".arceos/modules/axsync" }
 axfs = { path = ".arceos/modules/axfs" }
 axruntime = { path = ".arceos/modules/axruntime", features = ["multitask"] }
-arceos_posix_api = { path = ".arceos/api/arceos_posix_api", features = ["fs"] }
+arceos_posix_api = { path = ".arceos/api/arceos_posix_api", features = ["fs", "multitask"] }
 axns = { path = ".arceos/modules/axns", features = ["thread-local"] }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]

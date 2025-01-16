@@ -1,13 +1,10 @@
-use axerrno::LinuxError;
 use axhal::paging::MappingFlags;
 use axtask::{current, TaskExtRef};
-use memory_addr::{VirtAddr, VirtAddrRange};
+use memory_addr::{VirtAddr, addr_range};
 use arceos_posix_api as api;
 use alloc::vec;
 use axhal::mem::MemoryAddr;
-use api::imp::fs::File;
 use axstd::io::SeekFrom;
-use memory_addr::addr_range;
 
 use crate::syscall_body;
 
@@ -78,36 +75,7 @@ pub(crate) fn sys_mmap(
     _offset: isize,
 ) -> usize {
     syscall_body!(sys_mmap, {
-        // let curr = current();
-        // let curr_ext = curr.task_ext();
-        // let mut aspace = curr_ext.aspace.lock();
-        // let permission_flags = MmapProt::from_bits_truncate(prot);
-        // // TODO: check illegal flags for mmap
-        // // An example is the flags contained none of MAP_PRIVATE, MAP_SHARED, or MAP_SHARED_VALIDATE.
-        // let map_flags = MmapFlags::from_bits_truncate(flags);
-
-        // let start_addr = if map_flags.contains(MmapFlags::MAP_FIXED) {
-        //     VirtAddr::from(addr as usize)
-        // } else {
-        //     aspace
-        //         .find_free_area(
-        //             VirtAddr::from(addr as usize),
-        //             length,
-        //             VirtAddrRange::new(aspace.base(), aspace.end()),
-        //         )
-        //         .or(aspace.find_free_area(
-        //             aspace.base(),
-        //             length,
-        //             VirtAddrRange::new(aspace.base(), aspace.end()),
-        //         ))
-        //         .ok_or(LinuxError::ENOMEM)?
-        // };
-
-        // aspace.map_alloc(start_addr, length, permission_flags.into(), false)?;
-
-        // Ok(start_addr.as_usize())
-        let file = File::from_fd(_fd)?;
-        let mut file = file.inner.lock();
+        let file = api::imp::fd_ops::get_file_like(_fd)?;
         let addr_u = addr as usize;
         let mut vaddr = VirtAddr::from(addr as usize).align_down_4k();
         let mut vaddr_end = VirtAddr::from((addr as usize + length) as usize)
