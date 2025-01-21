@@ -79,6 +79,7 @@ fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
         ),
         Sysno::wait4 => sys_wait4(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _),
         Sysno::clock_gettime => sys_clock_gettime(tf.arg0() as _, tf.arg1() as _) as _,
+        Sysno::gettimeofday => unsafe { sys_gettimeofday(tf.arg0() as _, tf.arg1() as _) as _ },
         Sysno::exit_group => sys_exit_group(tf.arg0() as _),
         _ => {
             warn!("Unimplemented syscall: {}", syscall_num);

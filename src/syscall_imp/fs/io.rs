@@ -3,8 +3,7 @@ use core::ffi::{c_void, c_char, c_int};
 use arceos_posix_api as api;
 use axerrno::LinuxError;
 use api::utils::char_ptr_to_str;
-use api::imp::fs::flags_to_options;
-use api::imp::fs::File;
+use api::imp::fs::{File, flags_to_options};
 use api::imp::dir::Dir;
 use alloc::format;
 use crate::syscall_body;
@@ -28,8 +27,6 @@ pub(crate) fn sys_close(fd: i32) -> isize {
 }
 
 pub(crate) fn sys_openat(dfd: c_int, fname: *const c_char, flags: c_int, mode: api::ctypes::mode_t) -> isize {
-    // assert_eq!(dfd, AT_FDCWD);
-    // api::sys_open(fname, flags, mode) as isize
     let filename = char_ptr_to_str(fname);
     debug!("sys_open <= {:?} {:#o} {:#o}", filename, flags, mode);
     syscall_body!(sys_open, {

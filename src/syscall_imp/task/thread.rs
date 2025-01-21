@@ -272,7 +272,7 @@ pub(crate) fn sys_clone(
         let tf = &mut unsafe { *trap_frame_ptr };
         if let Some(stack) = stack {
             tf.regs.sp = stack;
-            tf.sepc = unsafe {*(user_stack as *mut usize)};
+            tf.sepc = unsafe { *(user_stack as *mut usize) };
         }
 
         let mut uctx = UspaceContext::from(tf);
@@ -371,32 +371,6 @@ pub(crate) fn sys_wait4(pid: i32, exit_code_ptr: *mut i32, option: u32) -> isize
                 }
             };
         }
-        // for (index, child) in children.iter().enumerate() {
-        //     if pid <= 0 {
-        //         info!("Don't support for process group.");
-        //         if pid == 0 {
-        //             warn!("Don't support for process group.");
-        //         }
-        //         if let Some(ret) = child.join() {
-        //             if !exit_code_ptr.is_null() {
-        //                 unsafe { *exit_code_ptr = ret << 8; }
-        //             }
-        //             child_id = child.id().as_u64();
-        //             children.remove(index);
-        //             break;
-        //         }
-        //     } else if child.id().as_u64() == pid as u64 {
-        //         if let Some(ret) = child.join() {
-        //             if !exit_code_ptr.is_null() {
-        //                 unsafe { *exit_code_ptr = ret << 8; }
-        //             }
-        //             child_id = child.id().as_u64();
-        //             children.remove(index);
-        //             break;
-        //         }
-        //     }
-        // }
-        // Ok(child_id)
     })
 }
 
